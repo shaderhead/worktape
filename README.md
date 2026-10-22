@@ -9,12 +9,18 @@ It records your terminal and each window you open from it. Each recording become
 worktape needs macOS 15 or later.
 
 ```sh
+brew install shaderhead/tap/worktape
+```
+
+Homebrew also installs asciinema, agg and ffmpeg. macOS asks for screen recording permission on the first recording.
+
+To build it yourself:
+
+```sh
 brew install asciinema agg ffmpeg
 swift build -c release
 cp .build/release/worktape ~/.local/bin/
 ```
-
-macOS asks for screen recording permission on the first recording.
 
 ## Use
 
