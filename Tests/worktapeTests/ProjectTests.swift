@@ -1,0 +1,81 @@
+import Foundation
+import Testing
+@testable import worktape
+
+struct ProjectTests {
+    @Test func findsTheProjectFromASubdirectory() throws {
+        try withTemporaryDirectory { root in
+            try FileManager.default.createDirectory(atPath: root + "/.worktapes", withIntermediateDirectories: false)
+            try FileManager.default.createDirectory(atPath: root + "/a/b", withIntermediateDirectories: true)
+            #expect(Project.containing(root + "/a/b")?.root == root)
+        }
+    }
+
+    @Test func findsNothingOutsideAProject() throws {
+        try withTemporaryDirectory { root in
+            #expect(Project.containing(root) == nil)
+        }
+    }
+
+    @Test func ignoresAFileNamedLikeTheFolder() throws {
+        try withTemporaryDirectory { root in
+            FileManager.default.createFile(atPath: root + "/.worktapes", contents: nil)
+            #expect(Project.containing(root) == nil)
+        }
+    }
+
+    @Test func initRepairsAFolderMissingItsIgnoreFile() throws {
+        try withTemporaryDirectory { root in
+            try FileManager.default.createDirectory(atPath: root + "/.worktapes", withIntermediateDirectories: false)
+            #expect(initialise(root) == 0)
+            #expect(FileManager.default.fileExists(atPath: root + "/.worktapes/.gitignore"))
+        }
+    }
+
+    @Test func initCreatesAFolderThatIgnoresItself() throws {
+        try withTemporaryDirectory { root in
+            #expect(initialise(root) == 0)
+            let ignore = try String(contentsOfFile: root + "/.worktapes/.gitignore", encoding: .utf8)
+            #expect(ignore == "*\n")
+            #expect(initialise(root) == 1)
+        }
+    }
+}
+
+struct SessionTests {
+    @Test func namesTheFolderAndCastAfterTheStartTime() throws {
+        try withTemporaryDirectory { root in
+            #expect(initialise(root) == 0)
+            let session = try Session(in: Project(root: root), startedAt: "2026-10-22-120000")
+            #expect(session.directory == root + "/.worktapes/2026-10-22-120000")
+            #expect(session.directoryInProject == ".worktapes/2026-10-22-120000")
+            #expect(session.terminal == session.directory + "/2026-10-22-120000.cast")
+        }
+    }
+
+    @Test func numbersSessionsThatStartInTheSameSecond() throws {
+        try withTemporaryDirectory { root in
+            #expect(initialise(root) == 0)
+            let project = Project(root: root)
+            _ = try Session(in: project, startedAt: "2026-10-22-120000")
+            let second = try Session(in: project, startedAt: "2026-10-22-120000")
+            let third = try Session(in: project, startedAt: "2026-10-22-120000")
+            #expect(second.directoryInProject == ".worktapes/2026-10-22-120000-2")
+            #expect(third.terminal.hasSuffix("/2026-10-22-120000-3/2026-10-22-120000-3.cast"))
+        }
+    }
+
+    @Test func removesOnlyAnEmptyFolder() throws {
+        try withTemporaryDirectory { root in
+            #expect(initialise(root) == 0)
+            let empty = try Session(in: Project(root: root), startedAt: "2026-10-22-120000")
+            empty.removeDirectoryIfEmpty()
+            #expect(!FileManager.default.fileExists(atPath: empty.directory))
+
+            let used = try Session(in: Project(root: root), startedAt: "2026-10-22-130000")
+            FileManager.default.createFile(atPath: used.terminal, contents: Data())
+            used.removeDirectoryIfEmpty()
+            #expect(FileManager.default.fileExists(atPath: used.terminal))
+        }
+    }
+}
