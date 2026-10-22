@@ -63,6 +63,7 @@ The hook adds:
 
 - a red `●` to your prompt while recording
 - a yellow `‖` to your prompt while paused
+- a yellow `○` to your prompt in a project that isn't recording
 - a reminder when you enter a project that isn't recording
 
 ## Limits

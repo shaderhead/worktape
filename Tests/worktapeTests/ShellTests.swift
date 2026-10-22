@@ -84,16 +84,56 @@ struct HookTests {
         try withTemporaryDirectory { root in
             #expect(initialise(root) == 0)
             try FileManager.default.createDirectory(atPath: root + "/src", withIntermediateDirectories: false)
-            let output = try zsh("cd \(root); cd src; cd /; cd \(root)")
+            let script = """
+            cd \(root); _worktape_prompt
+            cd src; _worktape_prompt
+            cd /; _worktape_prompt
+            cd \(root); _worktape_prompt
+            """
+            let output = try zsh(script)
             #expect(output.standardError.components(separatedBy: "worktape not recording").count - 1 == 2)
         }
+    }
+
+    @Test func noticesAProjectSetUpInTheCurrentDirectory() throws {
+        try withTemporaryDirectory { root in
+            let script = """
+            cd \(root); _worktape_prompt
+            mkdir .worktapes; _worktape_prompt
+            print -r -- "${psvar[7]}"
+            """
+            let output = try zsh(script)
+            #expect(output.standardOutput == "1\n")
+            #expect(output.standardError.components(separatedBy: "worktape not recording").count - 1 == 1)
+        }
+    }
+
+    @Test func runsBeforeEachPrompt() throws {
+        let output = try zsh("print -r -- ${precmd_functions[(I)_worktape_prompt]}")
+        #expect(output.standardOutput != "0\n")
     }
 
     @Test func staysQuietWhileRecording() throws {
         try withTemporaryDirectory { root in
             #expect(initialise(root) == 0)
-            let output = try zsh("cd \(root)", environment: ["WORKTAPE_RECORDING": root])
+            let output = try zsh("cd \(root); _worktape_prompt", environment: ["WORKTAPE_RECORDING": root])
             #expect(output.standardError.isEmpty)
+        }
+    }
+
+    @Test func marksThePromptInAProjectThatIsNotRecording() throws {
+        try withTemporaryDirectory { root in
+            #expect(initialise(root) == 0)
+            let script = """
+            PROMPT='> '
+            cd \(root); _worktape_prompt; _worktape_prompt
+            print -r -- "$PROMPT|${psvar[7]}|${psvar[8]}|${psvar[9]}"
+            cd /; _worktape_prompt
+            print -r -- "${psvar[7]}|${psvar[8]}|${psvar[9]}"
+            """
+            let lines = try zsh(script).standardOutput.split(separator: "\n")
+            #expect(lines.first == "> %(7V.%F{yellow}○%f .)%(8V.%F{red}●%f .)%(9V.%F{yellow}‖%f .)|1||")
+            #expect(lines.last == "||")
         }
     }
 
@@ -102,27 +142,29 @@ struct HookTests {
             let script = """
             PROMPT='> '
             _worktape_prompt; _worktape_prompt
-            print -r -- "$PROMPT|${psvar[8]}|${psvar[9]}"
+            print -r -- "$PROMPT|${psvar[7]}|${psvar[8]}|${psvar[9]}"
             : > \(state)/paused
             _worktape_prompt
-            print -r -- "${psvar[8]}|${psvar[9]}"
+            print -r -- "${psvar[7]}|${psvar[8]}|${psvar[9]}"
             """
             let output = try zsh(script, environment: ["WORKTAPE_RECORDING": "/project", "WORKTAPE_STATE": state])
             let lines = output.standardOutput.split(separator: "\n")
-            #expect(lines.first == "> %(8V.%F{red}●%f .)%(9V.%F{yellow}‖%f .)|1|")
-            #expect(lines.last == "|1")
+            #expect(lines.first == "> %(7V.%F{yellow}○%f .)%(8V.%F{red}●%f .)%(9V.%F{yellow}‖%f .)||1|")
+            #expect(lines.last == "||1")
             #expect(FileManager.default.fileExists(atPath: state + "/prompt"))
         }
     }
 
     @Test func marksThePromptOnceWithGlobSubst() throws {
-        let script = "setopt glob_subst; PROMPT='> '; _worktape_prompt; _worktape_prompt; print -r -- \"$PROMPT\""
-        let output = try zsh(script, environment: ["WORKTAPE_RECORDING": "/project"])
-        #expect(output.standardOutput == "> %(8V.%F{red}●%f .)%(9V.%F{yellow}‖%f .)\n")
+        try withTemporaryDirectory { root in
+            #expect(initialise(root) == 0)
+            let output = try zsh("setopt glob_subst; PROMPT='> '; cd \(root); _worktape_prompt; _worktape_prompt; print -r -- \"$PROMPT\"")
+            #expect(output.standardOutput == "> %(7V.%F{yellow}○%f .)%(8V.%F{red}●%f .)%(9V.%F{yellow}‖%f .)\n")
+        }
     }
 
-    @Test func leavesThePromptAloneOutsideARecording() throws {
-        let output = try zsh("PROMPT='> '; print -r -- \"$PROMPT\"; whence _worktape_prompt || print none")
-        #expect(output.standardOutput == "> \nnone\n")
+    @Test func leavesThePromptAloneOutsideAProject() throws {
+        let output = try zsh("PROMPT='> '; cd /; _worktape_prompt; print -r -- \"$PROMPT\"")
+        #expect(output.standardOutput == "> \n")
     }
 }

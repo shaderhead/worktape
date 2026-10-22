@@ -66,36 +66,38 @@ func initialise(_ directory: String) -> Int32 {
 }
 
 let zshHook = #"""
-_worktape_check() {
-  [[ -n $WORKTAPE_RECORDING ]] && return
-  local dir=$PWD
-  until [[ -d $dir/.worktapes ]]; do
-    [[ $dir == / ]] && { _worktape_warned=; return }
-    dir=${dir:h}
-  done
-  [[ $dir == $_worktape_warned ]] && return
-  _worktape_warned=$dir
-  print -u2 -r -- $'\e[33m''○ worktape not recording'$'\e[0m'
+typeset -g _worktape_warned
+_worktape_prompt() {
+  psvar[7,9]=('' '' '')
+  if [[ -n $WORKTAPE_RECORDING ]]; then
+    if [[ -e $WORKTAPE_STATE/paused ]]; then
+      psvar[9]=1
+    else
+      psvar[8]=1
+    fi
+  else
+    local dir=$PWD
+    until [[ -d $dir/.worktapes ]]; do
+      [[ $dir == / ]] && { _worktape_warned=; return }
+      dir=${dir:h}
+    done
+    psvar[7]=1
+    if [[ $dir != $_worktape_warned ]]; then
+      _worktape_warned=$dir
+      print -P -u2 -- '%F{yellow}○ worktape not recording%f'
+    fi
+  fi
+  local mark='%(7V.%F{yellow}○%f .)%(8V.%F{red}●%f .)%(9V.%F{yellow}‖%f .)'
+  [[ $PROMPT == *"$mark" ]] || PROMPT+=$mark
 }
 autoload -Uz add-zsh-hook
-add-zsh-hook chpwd _worktape_check
-_worktape_check
+add-zsh-hook precmd _worktape_prompt
 
 if [[ -n $WORKTAPE_RECORDING ]]; then
-  _worktape_prompt() {
-    if [[ -e $WORKTAPE_STATE/paused ]]; then
-      psvar[8]='' psvar[9]=1
-    else
-      psvar[8]=1 psvar[9]=''
-    fi
-    local mark='%(8V.%F{red}●%f .)%(9V.%F{yellow}‖%f .)'
-    [[ $PROMPT == *"$mark" ]] || PROMPT+=$mark
-  }
   TRAPWINCH() {
     _worktape_prompt
     zle && zle reset-prompt
   }
-  add-zsh-hook precmd _worktape_prompt
   [[ -d $WORKTAPE_STATE ]] && : > $WORKTAPE_STATE/prompt
 fi
 
