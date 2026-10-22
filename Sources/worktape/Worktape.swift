@@ -89,7 +89,7 @@ if [[ -n $WORKTAPE_RECORDING ]]; then
       psvar[8]=1 psvar[9]=''
     fi
     local mark='%(8V.%F{red}●%f .)%(9V.%F{yellow}‖%f .)'
-    [[ $PROMPT == *$mark ]] || PROMPT+=$mark
+    [[ $PROMPT == *"$mark" ]] || PROMPT+=$mark
   }
   TRAPWINCH() {
     _worktape_prompt

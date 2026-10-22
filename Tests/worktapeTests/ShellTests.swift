@@ -115,6 +115,12 @@ struct HookTests {
         }
     }
 
+    @Test func marksThePromptOnceWithGlobSubst() throws {
+        let script = "setopt glob_subst; PROMPT='> '; _worktape_prompt; _worktape_prompt; print -r -- \"$PROMPT\""
+        let output = try zsh(script, environment: ["WORKTAPE_RECORDING": "/project"])
+        #expect(output.standardOutput == "> %(8V.%F{red}●%f .)%(9V.%F{yellow}‖%f .)\n")
+    }
+
     @Test func leavesThePromptAloneOutsideARecording() throws {
         let output = try zsh("PROMPT='> '; print -r -- \"$PROMPT\"; whence _worktape_prompt || print none")
         #expect(output.standardOutput == "> \nnone\n")
