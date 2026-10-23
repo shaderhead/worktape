@@ -1,5 +1,6 @@
 import Foundation
 @preconcurrency import ScreenCaptureKit
+import Synchronization
 
 final class WindowRecording {
     let path: String
@@ -10,6 +11,10 @@ final class WindowRecording {
         self.path = path
         self.stream = stream
         self.events = events
+    }
+
+    var stopReason: String? {
+        events.stopReason
     }
 
     static func start(_ window: SCWindow, to path: String) async throws -> WindowRecording {
@@ -27,7 +32,7 @@ final class WindowRecording {
         recordingConfiguration.videoCodecType = .hevc
 
         let events = RecordingEvents()
-        let stream = SCStream(filter: filter, configuration: configuration, delegate: nil)
+        let stream = SCStream(filter: filter, configuration: configuration, delegate: events)
         try stream.addRecordingOutput(SCRecordingOutput(configuration: recordingConfiguration, delegate: events))
         let failure: (any Error)? = await waitAtMost(.seconds(5), orReturn: CaptureError.timedOut) { done in
             stream.startCapture { done($0) }
@@ -58,15 +63,27 @@ enum CaptureError: LocalizedError {
     var errorDescription: String? { "screen capture didn't respond in time" }
 }
 
-func listWindows() async -> [SCWindow]? {
-    await waitAtMost(.seconds(5), orReturn: nil) { done in
-        SCShareableContent.getExcludingDesktopWindows(true, onScreenWindowsOnly: false) { content, _ in
-            done(content?.windows)
+enum WindowList {
+    case windows([SCWindow])
+    case denied
+    case unavailable
+}
+
+func listWindows() async -> WindowList {
+    await waitAtMost(.seconds(5), orReturn: .unavailable) { done in
+        SCShareableContent.getExcludingDesktopWindows(true, onScreenWindowsOnly: false) { content, error in
+            if let content {
+                done(.windows(content.windows))
+            } else if (error as? SCStreamError)?.code == .userDeclined {
+                done(.denied)
+            } else {
+                done(.unavailable)
+            }
         }
     }
 }
 
-private final class RecordingEvents: NSObject, SCRecordingOutputDelegate, Sendable {
+private final class RecordingEvents: NSObject, SCRecordingOutputDelegate, SCStreamDelegate, Sendable {
     enum Event {
         case finished
         case failed(any Error)
@@ -74,9 +91,18 @@ private final class RecordingEvents: NSObject, SCRecordingOutputDelegate, Sendab
 
     private let events: AsyncStream<Event>
     private let continuation: AsyncStream<Event>.Continuation
+    private let reason = Mutex<String?>(nil)
 
     override init() {
         (events, continuation) = AsyncStream.makeStream()
+    }
+
+    var stopReason: String? {
+        reason.withLock { $0 }
+    }
+
+    func stream(_ stream: SCStream, didStopWithError error: any Error) {
+        reason.withLock { $0 = error.localizedDescription }
     }
 
     func recordingOutputDidFinishRecording(_ recordingOutput: SCRecordingOutput) {

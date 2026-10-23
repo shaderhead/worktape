@@ -13,7 +13,7 @@ func record() async -> Int32 {
         return 1
     }
     connectToWindowServer()
-    guard await listWindows() != nil else {
+    guard case .windows = await listWindows() else {
         log("can't see windows, check your terminal has screen recording permission")
         return 1
     }
@@ -60,7 +60,7 @@ func record() async -> Int32 {
     let titleBarHeight = await standardTitleBarHeight()
     recorderPID.store(asciinema.pid, ordering: .relaxed)
     var wasPaused = false
-    while !asciinema.hasExited() {
+    while !asciinema.hasExited() && !session.lostPermission {
         let paused = asciinemaConfig?.isPaused ?? false
         if paused != wasPaused {
             wasPaused = paused
@@ -73,6 +73,12 @@ func record() async -> Int32 {
         await session.update(under: asciinema.pid, paused: paused, titleBarHeight: titleBarHeight)
         try? await Task.sleep(for: .milliseconds(250))
     }
+    if session.lostPermission {
+        endShells(under: asciinema.pid)
+        while !asciinema.hasExited() {
+            try? await Task.sleep(for: .milliseconds(100))
+        }
+    }
     recorderPID.store(0, ordering: .relaxed)
     Console.stopped(project.name, after: ContinuousClock.now - started)
 
@@ -80,7 +86,7 @@ func record() async -> Int32 {
     await session.renderTerminal()
     session.report()
     session.removeDirectoryIfEmpty()
-    return asciinema.exitCode ?? 1
+    return session.lostPermission ? 1 : asciinema.exitCode ?? 1
 }
 
 private let terminalClosed = Atomic(false)
@@ -131,6 +137,7 @@ final class Session {
     private var issued: Set<String> = []
     private var saved: [String] = []
     private var problems: [String] = []
+    private(set) var lostPermission = false
 
     init(in project: Project, startedAt started: String = timestamp()) throws {
         var name = started
@@ -157,12 +164,29 @@ final class Session {
             await finishAll()
             return
         }
-        guard let windows = await listWindows() else { return }
+        let stoppedBeforeListing = recordings.compactMapValues(\.stopReason)
+        let windows: [SCWindow]
+        switch await listWindows() {
+        case .windows(let list):
+            windows = list
+        case .denied:
+            lostPermission = true
+            problems.append("lost screen recording permission, so worktape stopped recording")
+            return
+        case .unavailable:
+            return
+        }
 
         let open = Set(windows.map(\.windowID))
         let closed = recordings.filter { !open.contains($0.key) }
         for (id, recording) in closed {
             recordings[id] = nil
+            await finish(recording)
+        }
+        for (id, reason) in stoppedBeforeListing {
+            guard let recording = recordings.removeValue(forKey: id) else { continue }
+            ignored.insert(id)
+            problems.append("stopped recording \((recording.path as NSString).lastPathComponent): \(reason)")
             await finish(recording)
         }
 
