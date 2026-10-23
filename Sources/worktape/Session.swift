@@ -3,7 +3,11 @@ import Darwin
 import ScreenCaptureKit
 import Synchronization
 
-func record() async -> Int32 {
+func record(_ description: String? = nil) async -> Int32 {
+    if let description, slug(description).isEmpty {
+        log("describe the session with letters or numbers")
+        return EX_USAGE
+    }
     guard ProcessInfo.processInfo.environment["WORKTAPE_RECORDING"] == nil else {
         log("already recording")
         return 1
@@ -29,7 +33,10 @@ func record() async -> Int32 {
 
     let session: Session
     do {
-        session = try Session(in: project)
+        session = try Session(in: project, named: description)
+    } catch let error as SessionExists {
+        log("\(project.name) already has a session called \(error.name), add something like \"part 2\" to the description")
+        return 1
     } catch {
         log("can't create a session folder in \(project.recordings): \(error.localizedDescription)")
         return 1
@@ -139,8 +146,9 @@ final class Session {
     private var problems: [String] = []
     private(set) var lostPermission = false
 
-    init(in project: Project, startedAt started: String = timestamp()) throws {
-        var name = started
+    init(in project: Project, named description: String? = nil, startedAt started: Date = .now) throws {
+        let label = description.map { "\(day(started))-\(slug($0))" } ?? timestamp(started)
+        var name = label
         var copy = 2
         while true {
             do {
@@ -150,7 +158,8 @@ final class Session {
                 )
                 break
             } catch CocoaError.fileWriteFileExists {
-                name = "\(started)-\(copy)"
+                guard description == nil else { throw SessionExists(name: name) }
+                name = "\(label)-\(copy)"
                 copy += 1
             }
         }
@@ -353,6 +362,10 @@ func terminalSize(of cast: String) async throws -> (columns: Int, rows: Int)? {
         return (header.term.cols, header.term.rows)
     }
     return nil
+}
+
+struct SessionExists: Error {
+    let name: String
 }
 
 struct RecordedWindow {

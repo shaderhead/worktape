@@ -20,13 +20,20 @@ struct Project {
     }
 }
 
-func timestamp() -> String {
-    timestampFormatter.string(from: Date())
+func timestamp(_ date: Date = .now) -> String {
+    timestampFormatter.string(from: date)
 }
 
-private let timestampFormatter = {
+func day(_ date: Date) -> String {
+    dayFormatter.string(from: date)
+}
+
+private let timestampFormatter = formatter("yyyy-MM-dd-HHmmss")
+private let dayFormatter = formatter("yyyy-MM-dd")
+
+private func formatter(_ format: String) -> DateFormatter {
     let formatter = DateFormatter()
     formatter.locale = Locale(identifier: "en_US_POSIX")
-    formatter.dateFormat = "yyyy-MM-dd-HHmmss"
+    formatter.dateFormat = format
     return formatter
-}()
+}

@@ -7,6 +7,8 @@ struct Worktape {
         switch Array(CommandLine.arguments.dropFirst()) {
         case ["record"]:
             exit(await record())
+        case let arguments where arguments.count == 2 && arguments[0] == "record" && !arguments[1].hasPrefix("-"):
+            exit(await record(arguments[1]))
         case ["stop"]:
             exit(stop())
         case ["init"]:
@@ -25,10 +27,10 @@ struct Worktape {
 let usage = """
 usage: worktape <command>
 
-  init       set up .worktapes/ in this directory
-  record     record this terminal and the windows opened from it
-  stop       stop the recording this shell is part of
-  hook zsh   print a zsh hook that reminds you to record
+  init                    set up .worktapes/ in this directory
+  record [description]    record this terminal and the windows opened from it
+  stop                    stop the recording this shell is part of
+  hook zsh                print a zsh hook that reminds you to record
 """
 
 func stop() -> Int32 {
