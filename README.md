@@ -35,7 +35,7 @@ worktape stop     # stops it
 
 worktape records each window you open from the recorded shell. A recording ends when its window closes or you pause. Resuming starts a new recording for each open window.
 
-When you stop, worktape renders the terminal recording as a video. It plays at normal speed and cuts pauses to half a second. `ctrl+c` skips this step.
+When you stop, worktape renders the terminal recording as a video. It plays at normal speed, cuts pauses to half a second and fits in 4K. `ctrl+c` skips this step.
 
 Each session gets its own folder. File names start with the time each recording started:
 

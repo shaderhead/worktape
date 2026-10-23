@@ -234,7 +234,9 @@ final class Session {
         }
 
         Console.note("rendering \((video as NSString).lastPathComponent), ctrl+c to skip")
-        let agg = ["agg", "--font-size", "32", "--idle-time-limit", "0.5", terminal, animation]
+        let size = try? await terminalSize(of: terminal)
+        let font = size.map { fontSize(columns: $0.columns, rows: $0.rows) } ?? largestFontSize
+        let agg = ["agg", "--font-size", String(font), "--idle-time-limit", "0.5", terminal, animation]
         let ffmpeg = [
             "ffmpeg", "-nostdin", "-v", "error", "-i", animation,
             "-vf", "fps=30,scale=trunc(iw/2)*2:trunc(ih/2)*2",
@@ -301,6 +303,32 @@ final class Session {
             problems.append("\((recording.path as NSString).lastPathComponent) may be unplayable: \(error.localizedDescription)")
         }
     }
+}
+
+let largestFontSize = 32
+
+func fontSize(columns: Int, rows: Int) -> Int {
+    let aggCellWidth = 0.6
+    let aggLineHeight = 1.4
+    // agg pads the video by half a cell on every side.
+    let widest = 3840 / (Double(columns + 1) * aggCellWidth)
+    let tallest = 2160 / (Double(rows + 1) * aggLineHeight)
+    return max(1, Int(min(Double(largestFontSize), widest, tallest)))
+}
+
+func terminalSize(of cast: String) async throws -> (columns: Int, rows: Int)? {
+    struct Header: Decodable {
+        struct Terminal: Decodable {
+            let cols: Int
+            let rows: Int
+        }
+        let term: Terminal
+    }
+    for try await line in URL(filePath: cast).lines {
+        let header = try JSONDecoder().decode(Header.self, from: Data(line.utf8))
+        return (header.term.cols, header.term.rows)
+    }
+    return nil
 }
 
 struct RecordedWindow {

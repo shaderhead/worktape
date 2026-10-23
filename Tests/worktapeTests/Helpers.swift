@@ -2,10 +2,21 @@ import Foundation
 @testable import worktape
 
 func withTemporaryDirectory<Result>(_ body: (String) throws -> Result) throws -> Result {
+    let directory = try makeTemporaryDirectory()
+    defer { try? FileManager.default.removeItem(atPath: directory) }
+    return try body(directory)
+}
+
+func withTemporaryDirectory<Result>(_ body: (String) async throws -> Result) async throws -> Result {
+    let directory = try makeTemporaryDirectory()
+    defer { try? FileManager.default.removeItem(atPath: directory) }
+    return try await body(directory)
+}
+
+private func makeTemporaryDirectory() throws -> String {
     let directory = (NSTemporaryDirectory() as NSString).appendingPathComponent("worktape-tests-\(UUID().uuidString)")
     try FileManager.default.createDirectory(atPath: directory, withIntermediateDirectories: false)
-    defer { try? FileManager.default.removeItem(atPath: directory) }
-    return try body((directory as NSString).standardizingPath)
+    return (directory as NSString).standardizingPath
 }
 
 func exitCode(of child: ChildProcess) async -> Int32? {
